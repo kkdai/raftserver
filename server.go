@@ -43,6 +43,7 @@ type KVRaft struct {
 	currentTerm int
 	voteFor     int
 	log         *LogData
+	role        Role
 
 	// Raft Volatile state (All Server)
 	commitIndex int
@@ -56,7 +57,14 @@ type KVRaft struct {
 func NewKVRaft() *KVRaft {
 	k := new(KVRaft)
 	k.log = NewLogData()
+	k.role = Follower
 	return k
+}
+
+//change role
+func (kv *KVRaft) changeRole(r Role) {
+	log.Println("[ROLE] Server:", kv.me, " change from ", kv.role, " to ", r)
+	kv.role = r
 }
 
 //AppendEntries :RPC call to server to update Log Entry
@@ -65,6 +73,9 @@ func (kv *KVRaft) AppendEntries(args *AEParam, reply *AEReply) error {
 	//Reply false if term small than current one
 	if args.Term < kv.currentTerm {
 		reply.Success = false
+		//apply new term and change back to follower
+		kv.currentTerm = args.Term
+		kv.changeRole(Follower)
 		return errors.New("term is smaller than current")
 	}
 
@@ -77,26 +88,64 @@ func (kv *KVRaft) AppendEntries(args *AEParam, reply *AEReply) error {
 		if data, err := kv.log.Get(index); err != nil {
 			log.Println("Get data failed on exist index, racing")
 		} else {
-			if data.Term != args.Term || data.Data != args.Data {
+			if data.Term != args.Term || data.Data != args.Entries[0] {
 				kv.log.TrimRight(index)
 			}
 
 		}
 	}
 
-	inLog := Log{Term: args.Term, Data: args.Data}
-	kv.log.Append(inLog)
+	//Append log to storage
+	var inLogs []Log
+	for _, v := range args.Entries {
+		inLogs = append(inLogs, Log{Term: args.Term, Data: v})
+	}
+
+	//Appen data
+	kv.log.Append(inLogs)
 
 	//Update reply
 	reply.Term = kv.currentTerm
 	reply.Success = true
+
+	//update commitIndex
+	if args.LeaderCommit > kv.commitIndex {
+		if args.LeaderCommit <= (kv.log.Length() - 1) {
+			kv.commitIndex = args.LeaderCommit
+		} else {
+			kv.commitIndex = (kv.log.Length() - 1)
+		}
+	}
+
+	// update other
+	kv.currentTerm = args.Term
+	kv.lastApplied = kv.log.Length() - 1 //update latest state machine index
+	if kv.lastApplied < kv.commitIndex {
+		kv.lastApplied = kv.commitIndex
+	}
+
+	//TODO  Heart beat
 	return nil
 }
 
 func (kv *KVRaft) RequestVote(args *RVParam, reply *RVReply) error {
 	DPrintf("[RequestVote] args=%v", args)
+	//Reply false if term small than current one
+	if args.Term < kv.currentTerm {
+		reply.VoteGranted = false
+		kv.currentTerm = args.Term
+		kv.changeRole(Follower)
+		return errors.New("term is smaller than current")
+	}
 
-	return nil
+	if kv.voteFor == 0 && args.LastLogIndex >= kv.lastApplied && args.LastLogTerm >= kv.currentTerm {
+		kv.voteFor = args.CandidateId
+		reply.Term = kv.currentTerm
+		reply.VoteGranted = true
+		return nil
+	}
+
+	return errors.New("Vote failed:" + fmt.Sprint("%v -> %v", kv.lastApplied, *args))
 }
 
 func (k *KVRaft) serverLoop() {

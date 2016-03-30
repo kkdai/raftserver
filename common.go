@@ -68,3 +68,11 @@ type GetReply struct {
 	Err   Err
 	Value string
 }
+
+type Role int
+
+const (
+	Follower Role = iota + 1
+	Candidate
+	Leader
+)

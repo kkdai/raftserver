@@ -12,7 +12,10 @@
 
 package raftserver
 
-import "errors"
+import (
+	"errors"
+	"log"
+)
 
 type Log struct {
 	Term int
@@ -57,17 +60,26 @@ func (l *LogData) Get(index int) (Log, error) {
 }
 
 //Append :Append data to last if not exist
-func (l *LogData) Append(in Log) error {
+func (l *LogData) Append(in []Log) error {
 	var lastLog Log
+
+	//empty for heart beat, just return nil
+	if len(in) == 0 {
+		log.Println("Empty entry for heart beat")
+		return nil
+	}
+
 	if len(l.data) > 0 {
 		lastLog = l.data[len(l.data)-1]
 	}
 
-	if lastLog.Term == in.Term && lastLog.Data == in.Data {
+	if lastLog.Term == in[0].Term && lastLog.Data == in[0].Data {
 		return errors.New("Append failed, exist")
 	}
 
-	l.data = append(l.data, in)
+	for _, v := range in {
+		l.data = append(l.data, v)
+	}
 	return nil
 }
 
