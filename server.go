@@ -13,6 +13,7 @@
 package raftserver
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -41,7 +42,7 @@ type KVRaft struct {
 	// Raft Persistent State
 	currentTerm int
 	voteFor     int
-	log         []string
+	log         *LogData
 
 	// Raft Volatile state (All Server)
 	commitIndex int
@@ -52,13 +53,48 @@ type KVRaft struct {
 	matchIndex int
 }
 
+func NewKVRaft() *KVRaft {
+	k := new(KVRaft)
+	k.log = NewLogData()
+	return k
+}
+
+//AppendEntries :RPC call to server to update Log Entry
 func (kv *KVRaft) AppendEntries(args *AEParam, reply *AEReply) error {
-	DPrintf("[AppendEntries]", args)
+	DPrintf("[AppendEntries] args=%v", args)
+	//Reply false if term small than current one
+	if args.Term < kv.currentTerm {
+		reply.Success = false
+		return errors.New("term is smaller than current")
+	}
+
+	//Reply false if log doesn;t contain an entry at previous
+	if exist, index := kv.log.ContainIndex(args.PrevLogTerm, args.PrevLogIndex); !exist {
+		reply.Success = false
+		return errors.New("No contain previous index or term term =>" + fmt.Sprint(args))
+	} else {
+		//If eixst a conflict value, trim it to the end
+		if data, err := kv.log.Get(index); err != nil {
+			log.Println("Get data failed on exist index, racing")
+		} else {
+			if data.Term != args.Term || data.Data != args.Data {
+				kv.log.TrimRight(index)
+			}
+
+		}
+	}
+
+	inLog := Log{Term: args.Term, Data: args.Data}
+	kv.log.Append(inLog)
+
+	//Update reply
+	reply.Term = kv.currentTerm
+	reply.Success = true
 	return nil
 }
 
 func (kv *KVRaft) RequestVote(args *RVParam, reply *RVReply) error {
-	DPrintf("[RequestVote]", args)
+	DPrintf("[RequestVote] args=%v", args)
 
 	return nil
 }
@@ -86,12 +122,12 @@ func StarServerJoinCluster(rpcPort string, me int) *KVRaft {
 }
 
 func startServer(serversPort string, me int, cluster []string, join bool) *KVRaft {
-	kv := new(KVRaft)
+	kv := NewKVRaft()
 	rpcs := rpc.NewServer()
 	rpcs.Register(kv)
 	go kv.serverLoop()
 
-	DPrintf("[server] ", me, " ==> ", serversPort)
+	DPrintf("[server] %d port:%s", me, serversPort)
 	l, e := net.Listen("tcp", serversPort)
 	if e != nil {
 		log.Fatal("listen error: ", e)
