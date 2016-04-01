@@ -21,6 +21,7 @@ import (
 	"net/rpc"
 	"sync"
 	"syscall"
+	"time"
 )
 
 const Debug = 1
@@ -52,12 +53,21 @@ type KVRaft struct {
 	// Raft Volatile state (Leader)
 	nextIndex  int
 	matchIndex int
+
+	//random time out duration
+	timoutDuration time.Duration
+	heartbeat      time.Time
+	electionTime   time.Time
 }
 
 func NewKVRaft() *KVRaft {
 	k := new(KVRaft)
 	k.log = NewLogData()
 	k.role = Follower
+
+	//random timeout
+	rand.Seed(time.Now().UnixNano())
+	k.timoutDuration = time.Millisecond * time.Duration(rand.Intn(50)+1)
 	return k
 }
 
@@ -120,36 +130,65 @@ func (kv *KVRaft) AppendEntries(args *AEParam, reply *AEReply) error {
 	// update other
 	kv.currentTerm = args.Term
 	kv.lastApplied = kv.log.Length() - 1 //update latest state machine index
-	if kv.lastApplied < kv.commitIndex {
-		kv.lastApplied = kv.commitIndex
-	}
+	// TODO If commit > last applited, leader will send rest of other to fill it up
+	//if kv.lastApplied < kv.commitIndex {
+	//kv.lastApplied = kv.commitIndex
+	//}
 
-	//TODO  Heart beat
+	kv.heartbeat = time.Now()
 	return nil
 }
 
-func (kv *KVRaft) RequestVote(args *RVParam, reply *RVReply) error {
+func (k *KVRaft) RequestVote(args *RVParam, reply *RVReply) error {
 	DPrintf("[RequestVote] args=%v", args)
 	//Reply false if term small than current one
-	if args.Term < kv.currentTerm {
+	if args.Term < k.currentTerm {
 		reply.VoteGranted = false
-		kv.currentTerm = args.Term
-		kv.changeRole(Follower)
+		k.currentTerm = args.Term
+		k.changeRole(Follower)
 		return errors.New("term is smaller than current")
 	}
 
-	if kv.voteFor == 0 && args.LastLogIndex >= kv.lastApplied && args.LastLogTerm >= kv.currentTerm {
-		kv.voteFor = args.CandidateId
-		reply.Term = kv.currentTerm
+	if k.voteFor == 0 && args.LastLogIndex >= k.lastApplied && args.LastLogTerm >= k.currentTerm {
+		k.voteFor = args.CandidateId
+		reply.Term = k.currentTerm
 		reply.VoteGranted = true
 		return nil
 	}
 
-	return errors.New("Vote failed:" + fmt.Sprint("%v -> %v", kv.lastApplied, *args))
+	return errors.New("Vote failed:" + fmt.Sprint("%v -> %v", k.lastApplied, *args))
 }
 
 func (k *KVRaft) serverLoop() {
+	for {
+		switch k.role {
+		case Follower:
+			k.followerLoop()
+		case Candidate:
+			k.candidateLoop()
+		case Leader:
+			k.leaderLoop()
+		}
 
+		//default time thick
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func (k *KVRaft) followerLoop() {
+	//if timeout change to candidate and increase term
+	if k.heartbeat.Add(k.timoutDuration).After(time.Now()) {
+		k.changeRole(Candidate)
+		k.currentTerm++
+		return
+	}
+
+}
+
+func (k *KVRaft) candidateLoop() {
+}
+
+func (k *KVRaft) leaderLoop() {
 }
 
 // tell the server to shut itself down.

@@ -12,6 +12,12 @@
 
 package raftserver
 
+import "time"
+
+const (
+	ElectionTimeOut time.Duration = 150 * time.Millisecond
+)
+
 const (
 	OK           = "OK"
 	ErrNoKey     = "ErrNoKey"
