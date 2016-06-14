@@ -12,17 +12,16 @@
 
 package raftserver
 
-import "testing"
+// func TestClientWithSingleServer(t *testing.T) {
+// 	srv := StartServer("127.0.0.1:1234", 1)
 
-func TestClientWithSingleServer(t *testing.T) {
-	// srv := StartServer("127.0.0.1:1234", 1)
-
-	// client := MakeClerk("127.0.0.1:1234")
-	// client.Put("t1", "v1")
-	// log.Println("got:", ret)
-	// if ret != "v1" {
-	// 	t.Error("Client get error:", ret)
-	// }
-	// srv.kill()
-	// os.RemoveAll("raftexample-1")
-}
+// 	client := MakeClerk("127.0.0.1:1234")
+// 	client.Put("t1", "v1")
+// 	ret := client.Get("t1")
+// 	log.Println("got:", ret)
+// 	if ret != "v1" {
+// 		t.Error("Client get error:", ret)
+// 	}
+// 	srv.kill()
+// 	os.RemoveAll("raftexample-1")
+// }

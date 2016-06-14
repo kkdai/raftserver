@@ -34,9 +34,10 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 }
 
 type KVRaft struct {
+	serverList []string
 	mu         sync.Mutex
 	l          net.Listener
-	me         int
+	myID       int
 	dead       bool // for testing
 	unreliable bool // for testing
 
@@ -60,21 +61,49 @@ type KVRaft struct {
 	electionTime   time.Time
 }
 
+//NewKVRaft :
 func NewKVRaft() *KVRaft {
-	k := new(KVRaft)
-	k.log = NewLogData()
-	k.role = Follower
+	kv := new(KVRaft)
+	kv.log = NewLogData()
+	kv.role = Follower
 
 	//random timeout
 	rand.Seed(time.Now().UnixNano())
-	k.timoutDuration = time.Millisecond * time.Duration(rand.Intn(50)+1)
-	return k
+	kv.timoutDuration = time.Millisecond * time.Duration(rand.Intn(50)+1)
+	kv.heartbeat = time.Now()
+	return kv
 }
 
 //change role
 func (kv *KVRaft) changeRole(r Role) {
-	log.Println("[ROLE] Server:", kv.me, " change from ", kv.role, " to ", r)
+	log.Println("[ROLE] Server:", kv.myID, " change from ", kv.role, " to ", r)
 	kv.role = r
+}
+
+func (kv *KVRaft) callRequestVote(serverAddr string) error {
+	var args RVParam
+	args.Term = kv.currentTerm
+	args.CandidateId = kv.myID
+	args.LastLogIndex = kv.lastApplied
+	args.LastLogTerm = kv.currentTerm
+
+	var reply RVReply
+	call(serverAddr, "KVRaft.RequestVote", &args, &reply)
+	return nil
+}
+
+func (kv *KVRaft) callHeartbeat(serverAddr string) error {
+	var args AEParam
+	args.Term = kv.currentTerm
+	args.LeaderID = kv.myID
+	args.PrevLogIndex = kv.lastApplied
+	args.PrevLogTerm = kv.currentTerm - 1
+	args.Entries = []string{} //empty for heart beat
+	args.LeaderCommit = kv.commitIndex
+
+	var reply AEReply
+	call(serverAddr, "KVRaft.AppendEntries", &args, &reply)
+	return nil
 }
 
 //AppendEntries :RPC call to server to update Log Entry
@@ -92,7 +121,8 @@ func (kv *KVRaft) AppendEntries(args *AEParam, reply *AEReply) error {
 	//Reply false if log doesn;t contain an entry at previous
 	if exist, index := kv.log.ContainIndex(args.PrevLogTerm, args.PrevLogIndex); !exist {
 		reply.Success = false
-		return errors.New("No contain previous index or term term =>" + fmt.Sprint(args))
+		log.Println("No contain previous index or term term =>" + fmt.Sprint(args))
+		return nil
 	} else {
 		//If eixst a conflict value, trim it to the end
 		if data, err := kv.log.Get(index); err != nil {
@@ -139,83 +169,88 @@ func (kv *KVRaft) AppendEntries(args *AEParam, reply *AEReply) error {
 	return nil
 }
 
-func (k *KVRaft) RequestVote(args *RVParam, reply *RVReply) error {
-	DPrintf("[RequestVote] args=%v", args)
+//RequestVote :
+func (kv *KVRaft) RequestVote(args *RVParam, reply *RVReply) error {
+	DPrintf("Srv:%d RequestVote got args=%v", kv.myID, args)
 	//Reply false if term small than current one
-	if args.Term < k.currentTerm {
+	if args.Term < kv.currentTerm {
 		reply.VoteGranted = false
-		k.currentTerm = args.Term
-		k.changeRole(Follower)
-		return errors.New("term is smaller than current")
+		kv.currentTerm = args.Term
+		kv.changeRole(Follower)
 	}
 
-	if k.voteFor == 0 && args.LastLogIndex >= k.lastApplied && args.LastLogTerm >= k.currentTerm {
-		k.voteFor = args.CandidateId
-		reply.Term = k.currentTerm
+	if kv.voteFor == 0 && args.LastLogIndex >= kv.lastApplied && args.LastLogTerm >= kv.currentTerm {
+		kv.voteFor = args.CandidateId
+		reply.Term = kv.currentTerm
 		reply.VoteGranted = true
-		return nil
 	}
 
-	return errors.New("Vote failed:" + fmt.Sprint("%v -> %v", k.lastApplied, *args))
+	log.Printf("%v -> %v", kv.lastApplied, *args)
+	return nil
 }
 
-func (k *KVRaft) serverLoop() {
+func (kv *KVRaft) serverLoop() {
 	for {
-		switch k.role {
+		switch kv.role {
 		case Follower:
-			k.followerLoop()
+			kv.followerLoop()
 		case Candidate:
-			k.candidateLoop()
+			kv.candidateLoop()
 		case Leader:
-			k.leaderLoop()
+			kv.leaderLoop()
 		}
 
 		//default time thick
+		// DPrintf("[server] %d run loop as a Roule of %d", kv.myID, kv.role)
 		time.Sleep(5 * time.Millisecond)
 	}
 }
 
-func (k *KVRaft) followerLoop() {
+func (kv *KVRaft) followerLoop() {
 	//if timeout change to candidate and increase term
-	if k.heartbeat.Add(k.timoutDuration).After(time.Now()) {
-		k.changeRole(Candidate)
-		k.currentTerm++
+	log.Println("Srv:", kv.myID, " time=", kv.heartbeat.Add(kv.timoutDuration).String(), " now:", time.Now().String())
+	if kv.heartbeat.Add(kv.timoutDuration).After(time.Now()) {
+		kv.changeRole(Candidate)
+		kv.currentTerm++
+		for _, srv := range kv.serverList {
+			kv.callRequestVote(srv)
+		}
+		DPrintf("[server] %d Request for vote %d", kv.myID, kv.role)
 		return
 	}
 
 }
 
-func (k *KVRaft) candidateLoop() {
+func (kv *KVRaft) candidateLoop() {
 }
 
-func (k *KVRaft) leaderLoop() {
+func (kv *KVRaft) leaderLoop() {
 }
 
 // tell the server to shut itself down.
 // please do not change this function.
 func (kv *KVRaft) kill() {
-	DPrintf("Kill(%d): die\n", kv.me)
+	DPrintf("Kill(%d): die\n", kv.myID)
 }
 
+//StartServer :
 func StartServer(rpcPort string, me int) *KVRaft {
-	return startServer(rpcPort, me, []string{rpcPort}, false)
+	return startServer(rpcPort, me, []string{}, false)
 }
 
+//StartClusterServers :
 func StartClusterServers(rpcPort string, me int, cluster []string) *KVRaft {
 	return startServer(rpcPort, me, cluster, false)
-}
-
-func StarServerJoinCluster(rpcPort string, me int) *KVRaft {
-	return startServer(rpcPort, me, []string{rpcPort}, true)
 }
 
 func startServer(serversPort string, me int, cluster []string, join bool) *KVRaft {
 	kv := NewKVRaft()
 	rpcs := rpc.NewServer()
 	rpcs.Register(kv)
+	kv.serverList = cluster
 	go kv.serverLoop()
 
-	DPrintf("[server] %d port:%s", me, serversPort)
+	DPrintf("[server] %d port:%s as Roule of %d", me, serversPort, kv.role)
 	l, e := net.Listen("tcp", serversPort)
 	if e != nil {
 		log.Fatal("listen error: ", e)

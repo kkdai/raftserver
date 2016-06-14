@@ -1,10 +1,28 @@
 package raftserver
 
-import "testing"
+import (
+	"log"
+	"testing"
+	"time"
+)
 
 func TestRPCServerAlive(t *testing.T) {
+	log.Println("TestRPCServerAlive")
+
 	srv := StartServer("127.0.0.1:1234", 1)
 	if srv == nil {
+		t.Error("Srv init error")
+	}
+
+	time.Sleep(time.Second * 5)
+}
+
+func TestMultipleRPCServerAlive(t *testing.T) {
+	log.Println("TesMultipleRPCServerAlive")
+	srv := StartClusterServers("127.0.0.1:1230", 1, []string{"127.0.0.1:1231", "127.0.0.1:1232"})
+	srv2 := StartClusterServers("127.0.0.1:1231", 2, []string{"127.0.0.1:1230", "127.0.0.1:1232"})
+	srv3 := StartClusterServers("127.0.0.1:1232", 3, []string{"127.0.0.1:1231", "127.0.0.1:1230"})
+	if srv == nil || srv2 == nil || srv3 == nil {
 		t.Error("Srv init error")
 	}
 
@@ -15,6 +33,8 @@ func TestRPCServerAlive(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+
+	time.Sleep(time.Second * 5)
 }
 
 //func TestSingleServer(t *testing.T) {
