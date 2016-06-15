@@ -6,35 +6,50 @@ import (
 	"time"
 )
 
-func TestRPCServerAlive(t *testing.T) {
-	log.Println("TestRPCServerAlive")
+// func TestRPCServerAlive(t *testing.T) {
+// 	log.Println("TestRPCServerAlive")
 
-	srv := StartServer("127.0.0.1:1234", 1)
-	if srv == nil {
-		t.Error("Srv init error")
-	}
+// 	srv := StartServer("127.0.0.1:1234", 1)
+// 	if srv == nil {
+// 		t.Error("Srv init error")
+// 	}
 
-	time.Sleep(time.Second * 5)
-}
+// 	time.Sleep(time.Second * 5)
+// }
 
-func TestMultipleRPCServerAlive(t *testing.T) {
+func TestBasicElection(t *testing.T) {
 	log.Println("TesMultipleRPCServerAlive")
-	srv := StartClusterServers("127.0.0.1:1230", 1, []string{"127.0.0.1:1231", "127.0.0.1:1232"})
+	var SrvList []*KVRaft
+	srv1 := StartClusterServers("127.0.0.1:1230", 1, []string{"127.0.0.1:1231", "127.0.0.1:1232"})
+	SrvList = append(SrvList, srv1)
 	srv2 := StartClusterServers("127.0.0.1:1231", 2, []string{"127.0.0.1:1230", "127.0.0.1:1232"})
+	SrvList = append(SrvList, srv2)
 	srv3 := StartClusterServers("127.0.0.1:1232", 3, []string{"127.0.0.1:1231", "127.0.0.1:1230"})
-	if srv == nil || srv2 == nil || srv3 == nil {
+	SrvList = append(SrvList, srv1)
+	if srv1 == nil || srv2 == nil || srv3 == nil {
 		t.Error("Srv init error")
 	}
 
-	var argAE AEParam
-	var replyAE AEReply
+	time.Sleep(time.Second * 3)
 
-	err := srv.AppendEntries(&argAE, &replyAE)
-	if err != nil {
-		t.Error(err)
+	//Check if only one leader
+	leaderCount := 0
+	candidate := 0
+	followerCount := 0
+	for _, srv := range SrvList {
+		switch srv.role {
+		case Leader:
+			leaderCount++
+		case Candidate:
+			candidate++
+		case Follower:
+			followerCount++
+		}
 	}
 
-	time.Sleep(time.Second * 5)
+	if candidate > 0 || followerCount != 2 || leaderCount != 1 {
+		t.Error("Basic election failed:", followerCount, candidate, leaderCount)
+	}
 }
 
 //func TestSingleServer(t *testing.T) {

@@ -14,7 +14,6 @@ package raftserver
 
 import (
 	"fmt"
-	"log"
 	"net/rpc"
 )
 
@@ -32,14 +31,14 @@ func call(srv string, rpcname string,
 	args interface{}, reply interface{}) bool {
 	c, errx := rpc.Dial("tcp", srv)
 	if errx != nil {
-		log.Println("[Client] Dial err:", errx)
+		// log.Println("[Client] Dial err:", errx)
 		return false
 	}
 	defer c.Close()
 
 	err := c.Call(rpcname, args, reply)
 	if err == nil {
-		log.Println("[Client] Call err:", err)
+		// log.Println("[Client] Call err:", err, reply)
 		return true
 	}
 
@@ -47,8 +46,7 @@ func call(srv string, rpcname string,
 	return false
 }
 
-//Get
-// fetch the current value for a key.
+//Get :
 func (ck *Clerk) Get(key string) string {
 	// arg := GetArgs{Key: key}
 	// var reply GetReply
@@ -61,7 +59,7 @@ func (ck *Clerk) Get(key string) string {
 	return ""
 }
 
-//Put
+//Put :
 func (ck *Clerk) Put(key string, value string) {
 	// arg := PutArgs{Key: key, Value: value}
 	// var reply PutReply
