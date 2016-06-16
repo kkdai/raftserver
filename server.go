@@ -13,7 +13,6 @@
 package raftserver
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -71,14 +70,16 @@ func NewKVRaft(id int, srvList []string) *KVRaft {
 
 	//random timeout
 	rand.Seed(time.Now().UnixNano())
-	kv.timoutDuration = time.Millisecond * time.Duration(rand.Intn(50)+1)
+	hbRand := rand.Intn(200) + 50
+	kv.timoutDuration = time.Millisecond * time.Duration(hbRand)
+	log.Printf("Server %d HB=%d timeout=%v \n", kv.myID, hbRand, kv.timoutDuration)
 	kv.heartbeat = time.Now()
 	return kv
 }
 
 //change role
 func (kv *KVRaft) changeRole(r Role) {
-	log.Println("[ROLE] Server:", kv.myID, " change from ", kv.role, " to ", r)
+	// log.Println("[ROLE] Server:", kv.myID, " change from ", kv.role, " to ", r)
 	kv.role = r
 }
 
@@ -115,6 +116,8 @@ func (kv *KVRaft) callHeartbeat() error {
 
 //AppendEntries :RPC call to server to update Log Entry
 func (kv *KVRaft) AppendEntries(args *AEParam, reply *AEReply) error {
+	kv.heartbeat = time.Now()
+
 	//Candidte got append from leader back to followers
 	if kv.role == Candidate {
 		DPrintf("[Srv]:%d got leader AppendEntries - become back to follower", kv.myID)
@@ -123,12 +126,14 @@ func (kv *KVRaft) AppendEntries(args *AEParam, reply *AEReply) error {
 
 	DPrintf("[AppendEntries] args=%v", args)
 	//Reply false if term small than current one
-	if args.Term < kv.currentTerm {
+	if args.Term < kv.currentTerm { //include leader case.
 		reply.Success = false
 		//apply new term and change back to follower
-		kv.currentTerm = args.Term
-		kv.changeRole(Follower)
-		return errors.New("term is smaller than current")
+		if kv.role == Leader {
+			kv.currentTerm = args.Term
+			kv.changeRole(Follower)
+		}
+		return nil
 	}
 
 	//Reply false if log doesn't contain an entry at previous
@@ -182,25 +187,26 @@ func (kv *KVRaft) AppendEntries(args *AEParam, reply *AEReply) error {
 	//kv.lastApplied = kv.commitIndex
 	//}
 
-	kv.heartbeat = time.Now()
 	return nil
 }
 
 //RequestVote :
 func (kv *KVRaft) RequestVote(args *RVParam, reply *RVReply) error {
-	DPrintf("Srv:%d RequestVote got args=%v", kv.myID, args)
+	// DPrintf("Srv:%d RequestVote got args=%v", kv.myID, args)
 
-	if kv.voteFor == 0 && args.LastLogIndex >= kv.lastApplied && args.LastLogTerm >= kv.currentTerm {
+	if args.Term > kv.currentTerm && args.LastLogIndex >= kv.lastApplied {
 		kv.voteFor = args.CandidateId
+		kv.heartbeat = time.Now()
 		reply.Term = kv.currentTerm
 		reply.VoteGranted = true
+
+		kv.changeRole(Follower)
 		DPrintf("Srv:%d Accept RequestVote from srv: %d", kv.myID, args.CandidateId)
 		return nil
 	}
 
 	reply.VoteGranted = false
 	kv.currentTerm = args.Term
-	kv.changeRole(Follower)
 	DPrintf("Srv:%d Reject RequestVote from srv: %d", kv.myID, args.CandidateId)
 	return nil
 }
@@ -209,7 +215,7 @@ func (kv *KVRaft) serverLoop() {
 	for {
 
 		//Switch every role for time out process
-		if kv.heartbeat.Add(kv.timoutDuration).After(time.Now()) {
+		if kv.heartbeat.Add(kv.timoutDuration).Before(time.Now()) {
 			switch kv.role {
 			case Follower:
 				kv.followerLoop()
@@ -234,11 +240,11 @@ func (kv *KVRaft) followerLoop() {
 
 func (kv *KVRaft) candidateLoop() {
 	kv.currentTerm++
-	// kv.voteFor = kv.myID      //voted for self
+	kv.voteFor = kv.myID      //voted for self
 	kv.heartbeat = time.Now() //reset timer for election
 
 	gotVoted := 0
-	DPrintf(">>>>>> [server] %d Request for vote %d", kv.myID, kv.role)
+	DPrintf(">>>>>> [server] %d Request for vote %d, term=%d", kv.myID, kv.role, kv.currentTerm)
 	for _, srv := range kv.serverList {
 		if kv.callRequestVote(srv) {
 			gotVoted++

@@ -30,7 +30,7 @@ func TestBasicElection(t *testing.T) {
 		t.Error("Srv init error")
 	}
 
-	time.Sleep(time.Second * 3)
+	time.Sleep(time.Second * 2)
 
 	//Check if only one leader
 	leaderCount := 0
