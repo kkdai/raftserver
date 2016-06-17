@@ -30,11 +30,7 @@ Usage
 	srv3 := StartClusterServers("127.0.0.1:1232", 3, []string{"127.0.0.1:1231", "127.0.0.1:1230"})
 
 	//Need sleep a while for leader election.
-	time.Sleep(time.Second * 2)
-
-	//Ask who is leader
-	fmt.Println(srv1.WhoAreYou())
-	//Leader (It depends on election result)		
+	time.Sleep(time.Second * 2)		
 	
 ```
 

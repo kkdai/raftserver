@@ -25,7 +25,7 @@ func TestBasicElection(t *testing.T) {
 	srv2 := StartClusterServers("127.0.0.1:1231", 2, []string{"127.0.0.1:1230", "127.0.0.1:1232"})
 	SrvList = append(SrvList, srv2)
 	srv3 := StartClusterServers("127.0.0.1:1232", 3, []string{"127.0.0.1:1231", "127.0.0.1:1230"})
-	SrvList = append(SrvList, srv1)
+	SrvList = append(SrvList, srv3)
 	if srv1 == nil || srv2 == nil || srv3 == nil {
 		t.Error("Srv init error")
 	}
@@ -37,6 +37,7 @@ func TestBasicElection(t *testing.T) {
 	candidate := 0
 	followerCount := 0
 	for _, srv := range SrvList {
+		// log.Println("srv:", srv.myID, " is role:", srv.role)
 		switch srv.role {
 		case Leader:
 			leaderCount++
@@ -48,7 +49,7 @@ func TestBasicElection(t *testing.T) {
 	}
 
 	if candidate > 0 || followerCount != 2 || leaderCount != 1 {
-		t.Error("Basic election failed:", followerCount, candidate, leaderCount)
+		t.Error("Basic election failed:", followerCount, candidate, leaderCount, srv1.role, srv2.role, srv3.role)
 	}
 }
 

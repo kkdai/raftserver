@@ -23,10 +23,10 @@ import (
 	"time"
 )
 
-const Debug = 1
+const debug = 1
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
-	if Debug > 0 {
+	if debug > 0 {
 		log.Printf(format, a...)
 	}
 	return
@@ -79,7 +79,7 @@ func NewKVRaft(id int, srvList []string) *KVRaft {
 
 //change role
 func (kv *KVRaft) changeRole(r Role) {
-	// log.Println("[ROLE] Server:", kv.myID, " change from ", kv.role, " to ", r)
+	log.Println("[ROLE] Server:", kv.myID, " change from ", kv.role, " to ", r)
 	kv.role = r
 }
 
@@ -114,21 +114,22 @@ func (kv *KVRaft) callHeartbeat() error {
 	return nil
 }
 
-//WhoAreYou :Return the server role
-func (kv *KVRaft) WhoAreYou() string {
-	var Role string
-	switch kv.role {
-	case Follower:
-		Role = "Follower"
-	case Candidate:
-		Role = "Candidate"
-	case Leader:
-		Role = "Leader"
-	default:
-		Role = "Follower"
-	}
-	return Role
-}
+// //WhoAreYou :Return the server role
+// func (kv *KVRaft) WhoAreYou() string {
+// 	var Role string
+
+// 	switch kv.role {
+// 	case Follower:
+// 		Role = "Follower"
+// 	case Candidate:
+// 		Role = "Candidate"
+// 	case Leader:
+// 		Role = "Leader"
+// 	default:
+// 		Role = "Follower"
+// 	}
+// 	return Role
+// }
 
 //AppendEntries :RPC call to server to update Log Entry
 func (kv *KVRaft) AppendEntries(args *AEParam, reply *AEReply) error {
@@ -140,7 +141,7 @@ func (kv *KVRaft) AppendEntries(args *AEParam, reply *AEReply) error {
 		kv.changeRole(Follower)
 	}
 
-	DPrintf("[AppendEntries] args=%v", args)
+	// DPrintf("[AppendEntries] args=%v", args)
 	//Reply false if term small than current one
 	if args.Term < kv.currentTerm { //include leader case.
 		reply.Success = false
@@ -155,7 +156,7 @@ func (kv *KVRaft) AppendEntries(args *AEParam, reply *AEReply) error {
 	//Reply false if log doesn't contain an entry at previous
 	if exist, index := kv.log.ContainIndex(args.PrevLogTerm, args.PrevLogIndex); !exist {
 		reply.Success = false
-		log.Println("No contain previous index or term term =>" + fmt.Sprint(args))
+		// log.Println("No contain previous index or term term =>" + fmt.Sprint(args))
 		return nil
 	} else {
 		//If eixst a conflict value, trim it to the end
@@ -259,7 +260,7 @@ func (kv *KVRaft) candidateLoop() {
 	kv.voteFor = kv.myID      //voted for self
 	kv.heartbeat = time.Now() //reset timer for election
 
-	gotVoted := 0
+	gotVoted := 1 // candidate will vote for self
 	DPrintf(">>>>>> [server] %d Request for vote %d, term=%d", kv.myID, kv.role, kv.currentTerm)
 	for _, srv := range kv.serverList {
 		if kv.callRequestVote(srv) {
