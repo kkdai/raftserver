@@ -114,6 +114,22 @@ func (kv *KVRaft) callHeartbeat() error {
 	return nil
 }
 
+//WhoAreYou :Return the server role
+func (kv *KVRaft) WhoAreYou() string {
+	var Role string
+	switch kv.role {
+	case Follower:
+		Role = "Follower"
+	case Candidate:
+		Role = "Candidate"
+	case Leader:
+		Role = "Leader"
+	default:
+		Role = "Follower"
+	}
+	return Role
+}
+
 //AppendEntries :RPC call to server to update Log Entry
 func (kv *KVRaft) AppendEntries(args *AEParam, reply *AEReply) error {
 	kv.heartbeat = time.Now()

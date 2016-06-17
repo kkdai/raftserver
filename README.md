@@ -2,9 +2,7 @@ RaftServer: A RPC Server implement base on Raft Paper in Golang
 ==============
 
 [![GoDoc](https://godoc.org/github.com/kkdai/raftserver?status.svg)](https://godoc.org/github.com/kkdai/raftserver)  [![Build Status](https://travis-ci.org/kkdai/raftserver.svg?branch=master)](https://travis-ci.org/kkdai/raftserver)
-
-
-Still under implementation...
+[![](https://goreportcard.com/badge/github.com/kkdai/raftserver)](https://goreportcard.com/badge/github.com/kkdai/raftserver)
 
 
 What is Raft
@@ -16,6 +14,29 @@ Raft is a consensus algorithm that is designed to be easy to understand. It's eq
 
 Installation and Usage
 =============
+
+Install
+---------------
+``` 
+go get github.com/kkdai/raftserver
+```
+
+Usage
+---------------
+```
+	//Start three raft servers
+	srv1 := StartClusterServers("127.0.0.1:1230", 1, []string{"127.0.0.1:1231", "127.0.0.1:1232"})
+	srv2 := StartClusterServers("127.0.0.1:1231", 2, []string{"127.0.0.1:1230", "127.0.0.1:1232"})
+	srv3 := StartClusterServers("127.0.0.1:1232", 3, []string{"127.0.0.1:1231", "127.0.0.1:1230"})
+
+	//Need sleep a while for leader election.
+	time.Sleep(time.Second * 2)
+
+	//Ask who is leader
+	fmt.Println(srv1.WhoAreYou())
+	//Leader (It depends on election result)		
+	
+```
 
 
 
